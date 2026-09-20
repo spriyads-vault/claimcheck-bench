@@ -66,3 +66,51 @@ def test_redaction_recurses_through_lists_and_nesting():
 
 def test_contains_secret_is_false_without_live_keys():
     assert contains_secret({"anything": "at all"}) is False
+
+
+# ---------------------------------------------------------------------------
+# structural identifiers must survive redaction intact
+# ---------------------------------------------------------------------------
+
+
+def test_a_long_model_name_in_a_trace_id_is_not_redacted():
+    """The regression that dropped 117 of 702 real traces from every metric.
+
+    ``deepseek-coder-33b-instruct_together`` is 36 characters of
+    ``[A-Za-z0-9_-]``, which the long-opaque-token heuristic matched. Rewriting
+    a trace_id breaks the join to the dataset, and the trace then vanishes from
+    the scored set with no error anywhere.
+    """
+    trace_id = (
+        "appworld/legacy_full_code_agent/deepseek-coder-33b-instruct_together/"
+        "test_challenge/4441ee9_2"
+    )
+    row = redact({"trace_id": trace_id, "provider": "jev"})
+    assert row["trace_id"] == trace_id
+
+
+def test_a_git_commit_survives_redaction():
+    """40 hex characters is long and opaque, and it is also the audit trail."""
+    commit = "595ee32b7cb3955077ac70193d960f30b80a244f"
+    assert redact({"git_commit": commit})["git_commit"] == commit
+
+
+def test_structural_exemption_still_scrubs_a_live_secret(monkeypatch):
+    """Exempt from the heuristics, never exempt from the exact-value scrub."""
+    secret = "ts-live-abcdefghijklmnopqrstuvwxyz0123456789"
+    monkeypatch.setenv("TYPESAFE_API_KEY", secret)
+    row = redact({"trace_id": f"trace/{secret}/1"})
+    assert secret not in row["trace_id"]
+    assert "[REDACTED]" in row["trace_id"]
+
+
+def test_a_non_structural_long_token_is_still_redacted():
+    """The heuristic is narrowed, not switched off."""
+    row = redact({"note": "abcdefghijklmnopqrstuvwxyz0123456789ABCDEF"})
+    assert row["note"] == "[REDACTED]"
+
+
+def test_a_url_is_not_treated_as_structural():
+    """A URL can carry a key as a query parameter, so it keeps the heuristics."""
+    row = redact({"url": "https://api.example.com/v1?api_key=abcdefghijklmnopqrstuvwxyz012345"})
+    assert "abcdefghijklmnopqrstuvwxyz012345" not in row["url"]

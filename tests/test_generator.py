@@ -11,7 +11,13 @@ from false_success_eval.generate import (
     write_dataset,
 )
 from false_success_eval.hashing import canonical_json, sha256_file
-from false_success_eval.schemas import LABEL_ORDER, FaultType, Label
+from false_success_eval.schemas import (
+    LABEL_ORDER,
+    REAL_FAULTS,
+    SYNTHETIC_FAULTS,
+    FaultType,
+    Label,
+)
 from false_success_eval.templates import N_FAMILIES
 
 RECORDS = 160
@@ -40,9 +46,17 @@ def test_labels_are_exactly_balanced():
 
 
 def test_every_fault_type_appears():
+    """Every *synthetic* fault, and none belonging to an ingested corpus.
+
+    The enum also carries the real-corpus fault names so one schema serves both
+    kinds of dataset. The generator must produce all of the former and none of
+    the latter: a real fault name in a generated dataset would mean the two had
+    been mixed.
+    """
     records = generate_records(RECORDS, SEED)
-    seen = {r.fault_type for r in records}
-    assert seen == set(FaultType)
+    seen = {r.fault_type.value for r in records}
+    assert seen == set(SYNTHETIC_FAULTS)
+    assert not seen & set(REAL_FAULTS)
 
 
 def test_all_eight_domains_appear():

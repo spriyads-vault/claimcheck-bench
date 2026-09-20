@@ -169,6 +169,57 @@ def test_12_verify_run_detects_bad_cost_arithmetic(workspace):
         path.write_text(original)
 
 
+def test_12b_verify_run_reports_a_replaced_dataset_unless_archived(workspace, monkeypatch):
+    """Archived runs are verified against their own manifest, not the current dataset.
+
+    A run whose dataset has been regenerated underneath it (amendment A6 did
+    exactly that) is not corrupt -- it is history. `--archived` says so
+    explicitly rather than leaving the operator to ignore a FAIL by convention.
+    The default still reports the mismatch, because for a live run a dataset
+    that moved underneath it is a real problem.
+    """
+    run_dir = discover_runs(workspace / RUNS)[0]
+    dataset = workspace / DATA
+    original = dataset.read_bytes()
+    dataset.write_bytes(original + b'{"trace_id": "not-a-record"}\n')
+    # `manifest.dataset_path` is relative, so the dataset comparison only
+    # happens from the workspace root.
+    monkeypatch.chdir(workspace)
+    relative = run_dir.relative_to(workspace)
+    try:
+        problems = verify_run(relative)
+        assert any("dataset sha256 mismatch" in p for p in problems)
+        assert verify_run(relative, archived=True) == []
+
+        result = invoke(workspace, "verify-run", "--run", str(relative))
+        assert result.exit_code == 1
+
+        result = invoke(workspace, "verify-run", "--run", str(relative), "--archived")
+        assert result.exit_code == 0, result.output
+        assert "the dataset currently on disk was not compared" in result.output
+    finally:
+        dataset.write_bytes(original)
+    assert verify_run(relative) == []
+
+
+def test_12c_archived_runs_are_invisible_to_the_report(workspace):
+    """`runs/_archive/...` sits outside every stage root and is never discovered."""
+    run_dir = discover_runs(workspace / RUNS)[0]
+    archive = workspace / "runs" / "_archive" / "pre-a6" / str(RECORDS)
+    archive.mkdir(parents=True)
+    shutil.copytree(run_dir, archive / run_dir.name)
+    try:
+        discovered = discover_runs(workspace / RUNS)
+        assert not any("_archive" in str(d) for d in discovered)
+        assert discover_runs(workspace / "runs" / "_archive") == []
+        result = invoke(workspace, "report", "--out", "reports/archive-check")
+        assert result.exit_code == 0, result.output
+        results = json.loads((workspace / "reports" / "archive-check" / "results.json").read_text())
+        assert results["stale_runs_skipped"] == []
+    finally:
+        shutil.rmtree(workspace / "runs" / "_archive")
+
+
 def test_13_report_builds(workspace):
     result = invoke(workspace, "report", "--out", "reports/test")
     assert result.exit_code == 0, result.output
@@ -286,7 +337,11 @@ def test_20_general_model_records_not_run_without_configuration(workspace):
     terra = GeneralModelEvaluator(
         GeneralModelConfig.from_mapping("gpt_terra", config["general_model"]["gpt_terra"])
     )
-    assert "No verified official model ID" in terra.blocked
+    # The refusal stands, but its reason changed on 2026-09-20: GET /v1/models
+    # on the account does list `gpt-5.6-terra`, so "no verified model ID" was no
+    # longer true and saying it would have been its own small dishonesty. The
+    # block stays disabled so there is only one verified path to the model.
+    assert "Superseded" in terra.blocked
 
 
 def test_21_no_artifact_contains_a_secret(workspace):
@@ -294,3 +349,28 @@ def test_21_no_artifact_contains_a_secret(workspace):
         text = path.read_text(encoding="utf-8")
         assert "not-a-real-key-for-a-refusal-test" not in text
         assert "Bearer " not in text or "[REDACTED]" in text
+
+
+def test_09b_every_run_writes_a_deviation_account_even_when_empty(workspace):
+    """An empty file is the positive statement: this run sent what config says."""
+    for run_dir in discover_runs(workspace / RUNS):
+        manifest, _ = load_run(run_dir)
+        path = run_dir / "deviations.jsonl"
+        assert path.exists(), run_dir
+        assert path.read_text() == ""
+        assert manifest.deviation_count == 0
+        assert manifest.deviations_sha256
+
+
+def test_09c_verify_run_detects_a_tampered_deviation_file(workspace):
+    """A deviation added or removed after the fact must not verify."""
+    run_dir = discover_runs(workspace / RUNS)[0]
+    path = run_dir / "deviations.jsonl"
+    original = path.read_text()
+    path.write_text('{"parameter": "temperature"}\n')
+    try:
+        problems = verify_run(run_dir)
+        assert any("deviations sha256 mismatch" in p for p in problems), problems
+    finally:
+        path.write_text(original)
+    assert verify_run(run_dir) == []

@@ -12,15 +12,17 @@ from __future__ import annotations
 
 import json
 import random
+import threading
 import time
 from typing import Any
 
 import httpx
 
-from ..costs import PriceManifest, cost_usd
-from ..hashing import sha256_obj
+from ..budget import ContextBudget, TruncationRecord, fit_events, longest_question_chars
+from ..costs import PriceManifest, recorded_cost_usd
+from ..hashing import canonical_json, sha256_obj
 from ..redact import redact
-from ..retry import ErrorRateGuard, RetryPolicy, compute_delay, parse_retry_after
+from ..retry import ErrorRateGuard, RetryPolicy
 from ..schemas import (
     LABEL_ORDER,
     Attempt,
@@ -30,6 +32,7 @@ from ..schemas import (
     Prediction,
     Usage,
 )
+from ._transport import post_with_retries
 
 VERDICT_KEY = "verdict"
 NOUL_KEYS = ("has_success_claim", "tool_evidence_supports_claim", "needs_review")
@@ -53,6 +56,22 @@ def build_state(view: InferenceView, evaluation_rule: str) -> dict[str, Any]:
     }
 
 
+def state_envelope_chars(view: InferenceView, evaluation_rule: str) -> int:
+    """Length of everything in ``state`` that is not the events.
+
+    The goal, the tool schema and the evaluation rule are paid for before any
+    trace content and are never reduced: the goal *is* the question being asked,
+    and reducing it would change what the evaluator was asked to judge.
+    """
+    envelope = {
+        "goal": view.goal,
+        "tool_schema": [entry.model_dump(mode="json") for entry in view.tool_schema],
+        "events": [],
+        "evaluation_rule": evaluation_rule,
+    }
+    return len(canonical_json(envelope))
+
+
 class JevEvaluator:
     provider = "jev"
 
@@ -73,6 +92,7 @@ class JevEvaluator:
         rng: random.Random | None = None,
         sleep: Any = time.sleep,
         guard: ErrorRateGuard | None = None,
+        budget: ContextBudget | None = None,
     ) -> None:
         if not api_key:
             raise MissingCredentialError(
@@ -92,6 +112,13 @@ class JevEvaluator:
         self._rng = rng or random.Random(0)
         self._sleep = sleep
         self.guard = guard or ErrorRateGuard()
+        # Real traces are long enough to overflow the context window. The budget
+        # is applied per request and every reduction is recorded, so a run can
+        # be read back and told apart from one that sent every trace whole.
+        self.budget = budget or ContextBudget()
+        self._longest_question_chars = longest_question_chars(questions)
+        self.truncations: list[TruncationRecord] = []
+        self._truncation_lock = threading.Lock()
         self._client = httpx.Client(
             timeout=timeout_s,
             transport=transport,
@@ -121,52 +148,15 @@ class JevEvaluator:
     def _post(
         self, body: dict[str, Any]
     ) -> tuple[httpx.Response | None, list[Attempt], str | None]:
-        attempts: list[Attempt] = []
-        last_error: str | None = None
-        for attempt_number in range(1, self.policy.max_attempts + 1):
-            start_ns = time.perf_counter_ns()
-            status: int | None = None
-            error_class: str | None = None
-            response: httpx.Response | None = None
-            try:
-                response = self._client.post(self.path, json=body, headers=self._headers())
-                status = response.status_code
-            except httpx.HTTPError as exc:
-                error_class = type(exc).__name__
-                last_error = f"{error_class}: {exc}"
-            end_ns = time.perf_counter_ns()
-
-            retryable = error_class is not None or self.policy.is_retryable_status(status)
-            is_last = attempt_number >= self.policy.max_attempts
-            delay = 0.0
-            if retryable and not is_last:
-                retry_after = (
-                    parse_retry_after(dict(response.headers)) if response is not None else None
-                )
-                delay = compute_delay(self.policy, attempt_number, retry_after, self._rng)
-
-            attempts.append(
-                Attempt(
-                    attempt_number=attempt_number,
-                    http_status=status,
-                    error_class=error_class,
-                    retry_delay_seconds=delay,
-                    start_perf_ns=start_ns,
-                    end_perf_ns=end_ns,
-                    latency_ms=(end_ns - start_ns) / 1e6,
-                )
-            )
-
-            if not retryable:
-                if response is not None and status is not None and status >= 400:
-                    last_error = f"HTTP {status}"
-                return response, attempts, last_error
-            if is_last:
-                if status is not None:
-                    last_error = f"HTTP {status} after {attempt_number} attempts"
-                return response, attempts, last_error
-            self._sleep(delay)
-        return None, attempts, last_error
+        return post_with_retries(
+            self._client,
+            self.path,
+            body,
+            self._headers(),
+            policy=self.policy,
+            rng=self._rng,
+            sleep=self._sleep,
+        )
 
     # -- parsing --------------------------------------------------------
     def parse(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -220,7 +210,27 @@ class JevEvaluator:
         }
 
     # -- prediction -----------------------------------------------------
+    def fit_to_budget(self, view: InferenceView, trace_id: str) -> InferenceView:
+        """Reduce a trace to the context budget, recording it if anything changed.
+
+        A trace that already fits is returned untouched and nothing is recorded,
+        so a run with an empty truncation file provably sent every trace whole.
+        """
+        events, record = fit_events(
+            trace_id,
+            view.events,
+            budget=self.budget,
+            envelope_chars=state_envelope_chars(view, self.evaluation_rule),
+            longest_question_chars=self._longest_question_chars,
+        )
+        if record is None:
+            return view
+        with self._truncation_lock:
+            self.truncations.append(record)
+        return view.model_copy(update={"events": events})
+
     def predict(self, view: InferenceView, trace_id: str, repeat: int = 0) -> Prediction:
+        view = self.fit_to_budget(view, trace_id)
         body = {
             "state": build_state(view, self.evaluation_rule),
             "model": self.model_id,
@@ -304,7 +314,7 @@ class JevEvaluator:
             end_to_end_latency_ms=elapsed_ms,
             raw_request=raw_request,
             raw_response=raw_response,
-            cost_usd=cost_usd(self.prices, self.model_id, usage),
+            cost_usd=recorded_cost_usd(self.prices, self.model_id, usage),
             error=None,
         )
 

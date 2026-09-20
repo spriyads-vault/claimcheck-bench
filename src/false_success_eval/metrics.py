@@ -30,6 +30,23 @@ class Interval:
         return {"point": self.point, "lower": self.lower, "upper": self.upper}
 
 
+def point_predictions(predictions: Sequence[Prediction]) -> dict[str, Prediction]:
+    """One prediction per trace for point metrics: repeat 0 where it exists.
+
+    Repeats measure stability, not accuracy, so every point metric in this
+    harness is computed from a single pass. The fallback matters only for a run
+    still in flight, where a later repeat can land before repeat 0 does.
+    """
+    out: dict[str, Prediction] = {}
+    for prediction in predictions:
+        if prediction.repeat == 0:
+            out[prediction.trace_id] = prediction
+    if not out:
+        for prediction in predictions:
+            out.setdefault(prediction.trace_id, prediction)
+    return out
+
+
 def binary_targets(records: Sequence[TraceRecord]) -> np.ndarray:
     return np.array([1 if r.label is Label.unsupported_success else 0 for r in records], dtype=int)
 
@@ -173,6 +190,85 @@ def per_fault_matrix(
     return out
 
 
+def wilson_interval(successes: int, total: int, z: float = 1.96) -> Interval:
+    """95% Wilson score interval for a proportion.
+
+    Used wherever the page shows a detection rate. A rate on 56 traces and a
+    rate on 374 are not the same claim, and the normal approximation is badly
+    wrong near 0 and 1 -- which is exactly where flag rates live. Wilson is
+    closed-form, deterministic and needs no resampling, so a small multiple can
+    carry an interval without costing a bootstrap.
+    """
+    if total <= 0:
+        nan = float("nan")
+        return Interval(point=nan, lower=nan, upper=nan)
+    p = successes / total
+    denominator = 1.0 + z**2 / total
+    centre = (p + z**2 / (2 * total)) / denominator
+    margin = (z * math.sqrt(p * (1 - p) / total + z**2 / (4 * total**2))) / denominator
+    return Interval(
+        point=p,
+        lower=max(0.0, centre - margin),
+        upper=min(1.0, centre + margin),
+    )
+
+
+def bootstrap_interval(
+    y: np.ndarray,
+    scores: np.ndarray,
+    metric: str,
+    resamples: int,
+    seed: int,
+    budget: float = 0.05,
+) -> Interval:
+    """Percentile bootstrap CI for one provider's metric, over resampled traces.
+
+    The unpaired sibling of :func:`paired_bootstrap`. That one answers "is A
+    better than B", which is the right question for a verdict; this one answers
+    "how precisely do we know A", which is the right question for an error bar
+    on a chart. They are kept separate because a paired interval on a difference
+    is narrower than either arm's own interval and quoting one for the other
+    would overstate precision.
+    """
+
+    def compute(yy: np.ndarray, ss: np.ndarray) -> float:
+        if metric == "auprc":
+            return auprc(yy, ss)
+        if metric == "auroc":
+            return auroc(yy, ss)
+        if metric == "recall_at_budget":
+            return recall_at_budget(yy, ss, budget)
+        raise ValueError(f"unknown metric {metric!r}")
+
+    point = compute(y, scores)
+    rng = np.random.default_rng(seed)
+    n = len(y)
+    if n == 0:
+        return Interval(point=point, lower=float("nan"), upper=float("nan"))
+    draws = np.empty(resamples, dtype=float)
+    filled = 0
+    for _ in range(resamples):
+        idx = rng.integers(0, n, size=n)
+        yy = y[idx]
+        # A resample with one class in it has no AUPRC. Skipping it rather than
+        # scoring it as 0 or 1 keeps the interval honest about what could not be
+        # computed instead of filling the gap with a fabricated extreme.
+        if yy.sum() == 0 or yy.sum() == n:
+            continue
+        value = compute(yy, scores[idx])
+        if not math.isnan(value):
+            draws[filled] = value
+            filled += 1
+    if filled == 0:
+        return Interval(point=point, lower=float("nan"), upper=float("nan"))
+    sample = draws[:filled]
+    return Interval(
+        point=point,
+        lower=float(np.percentile(sample, 2.5)),
+        upper=float(np.percentile(sample, 97.5)),
+    )
+
+
 def paired_bootstrap(
     y: np.ndarray,
     scores_a: np.ndarray,
@@ -187,6 +283,8 @@ def paired_bootstrap(
     def compute(yy: np.ndarray, ss: np.ndarray) -> float:
         if metric == "auprc":
             return auprc(yy, ss)
+        if metric == "auroc":
+            return auroc(yy, ss)
         if metric == "recall_at_budget":
             return recall_at_budget(yy, ss, budget)
         raise ValueError(f"unknown metric {metric!r}")

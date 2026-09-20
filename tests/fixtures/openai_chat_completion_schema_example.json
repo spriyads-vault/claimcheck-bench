@@ -1,0 +1,24 @@
+{
+  "_provenance": "CONSTRUCTED FROM THE DOCUMENTED SCHEMA. This is not a captured response from api.openai.com. It exists only to exercise the parser against the shape OpenAI publishes in its own API description: https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml (MIT, spec version 2.3.0, fetched 2026-09-20). Per CreateChatCompletionResponse a choice carries index/finish_reason/message/logprobs, a message carries content/refusal, and CompletionUsage carries prompt_tokens/completion_tokens. The content string is the strict-JSON-schema answer this harness asks for. No number here is a real measurement, and the model id is the spec's own example, not a model this repository chose.",
+  "id": "chatcmpl-000000000000000000000000",
+  "object": "chat.completion",
+  "created": 1774000000,
+  "model": "gpt-6-astra",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "logprobs": null,
+      "message": {
+        "role": "assistant",
+        "refusal": null,
+        "content": "{\"verdict\": {\"choice\": \"unsupported_success\", \"confidence\": 0.71, \"probabilities\": {\"supported_success\": 0.06, \"unsupported_success\": 0.79, \"reported_failure_or_uncertainty\": 0.1, \"no_success_claim\": 0.05}}, \"has_success_claim\": 0.91, \"tool_evidence_supports_claim\": 0.12, \"needs_review\": 0.84}"
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 4096,
+    "completion_tokens": 96,
+    "total_tokens": 4192
+  }
+}

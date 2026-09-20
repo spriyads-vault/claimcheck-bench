@@ -31,6 +31,60 @@ class FaultType(str, Enum):
     irrelevant_success = "irrelevant_success"
     valid_retry_recovery = "valid_retry_recovery"
     noop_positive = "noop_positive"
+    # Amendment A6. The goal names its target by description, never by an ID or
+    # value that appears verbatim in the evidence; the agent acts on a plausible
+    # but wrong target and the tool confirms success for it. Nothing a string or
+    # field comparison can compute resolves this -- only reading the goal
+    # against the evidence does. See semantic.py.
+    semantic_target_mismatch = "semantic_target_mismatch"
+    # The matched negative control for the above: same indirection, same
+    # candidate listing, right target.
+    semantic_target_match = "semantic_target_match"
+
+    # -- real, ingested corpora ------------------------------------------
+    # A real trajectory has no synthetic fault taxonomy: its ground truth is a
+    # single programmatic pass/fail from the benchmark's own database, so the
+    # fault is named for what the ground truth says and nothing more. The
+    # difficulty suffix is benchmark metadata, not an inference from the text,
+    # which is what keeps the per-fault panel informative without inventing a
+    # taxonomy the source data does not carry.
+    real_unsupported_completion_easy = "real_unsupported_completion_easy"
+    real_unsupported_completion_medium = "real_unsupported_completion_medium"
+    real_unsupported_completion_hard = "real_unsupported_completion_hard"
+    real_supported_completion = "real_supported_completion"
+    real_reported_failure = "real_reported_failure"
+    real_no_completion_claim = "real_no_completion_claim"
+
+
+#: Fault types produced only by the synthetic generator.
+SYNTHETIC_FAULTS: frozenset[str] = frozenset(
+    {
+        "none",
+        "explicit_error",
+        "timeout_null_result",
+        "wrong_entity",
+        "wrong_parameter",
+        "stale_evidence",
+        "attempt_without_confirmation",
+        "irrelevant_success",
+        "valid_retry_recovery",
+        "noop_positive",
+        "semantic_target_mismatch",
+        "semantic_target_match",
+    }
+)
+
+#: Fault types produced only by an ingested real corpus.
+REAL_FAULTS: frozenset[str] = frozenset(
+    {
+        "real_unsupported_completion_easy",
+        "real_unsupported_completion_medium",
+        "real_unsupported_completion_hard",
+        "real_supported_completion",
+        "real_reported_failure",
+        "real_no_completion_claim",
+    }
+)
 
 
 class EventType(str, Enum):
@@ -195,3 +249,93 @@ class RunManifest(Frozen):
     error_count: int
     retry_count: int
     parse_failure_count: int
+    # -- context-budget accounting --------------------------------------
+    # Real traces are long. When one does not fit the evaluator's context
+    # budget it is reduced by the documented rule in ``budget.py`` and the
+    # reduction is recorded here. Content is never silently dropped: a run
+    # whose manifest says ``truncated_traces: 0`` sent every trace whole.
+    truncated_traces: int = 0
+    truncation_path: str = ""
+    truncation_sha256: str = ""
+    # -- provider deviations --------------------------------------------
+    # A request parameter the model refused, which this harness dropped so the
+    # run could proceed. It is a departure from the frozen config, so it is
+    # counted here and written out in full beside the run rather than left in
+    # the prose. ``deviation_count: 0`` is the positive statement that this run
+    # sent exactly what config/eval.yaml specifies.
+    deviation_count: int = 0
+    deviations_path: str = ""
+    deviations_sha256: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Dataset provenance
+# ---------------------------------------------------------------------------
+
+
+class DatasetKind(str, Enum):
+    """Where a dataset's traces and labels came from.
+
+    This is the field every honesty statement keys off. A caveat is generated
+    from the loaded run rather than written into the page, so a synthetic run
+    keeps its construction-label warning and a real run does not inherit it.
+    """
+
+    synthetic = "synthetic"
+    real = "real"
+
+
+class SourceLicence(Frozen):
+    """A licence verified against its primary source before any ingestion.
+
+    Nothing is ingested on a guess. ``verified_utc`` and ``verified_from`` say
+    when this was checked and against what, so a reader can re-check it rather
+    than take the harness's word for it.
+    """
+
+    spdx: str
+    name: str
+    url: str
+    permits_this_use: bool
+    conditions: tuple[str, ...] = ()
+    attribution: str = ""
+    verified_utc: str = ""
+    verified_from: str = ""
+
+
+class LabelRule(Frozen):
+    """The deterministic map from source ground truth to this harness's labels.
+
+    Labels are derived from the benchmark's own programmatic state, never from
+    the assistant's wording. ``claim_field`` names the structured field that
+    carries the completion claim and ``truth_field`` the field that carries the
+    ground truth; both are machine-readable in the source.
+    """
+
+    name: str
+    claim_field: str
+    truth_field: str
+    description: str
+    mapping: tuple[tuple[str, str], ...]
+    text_independent: bool = True
+
+
+class DatasetProvenance(Frozen):
+    """Everything a caveat needs to state about where a dataset came from."""
+
+    dataset_id: str
+    kind: DatasetKind
+    source_name: str
+    source_url: str
+    source_version: str = ""
+    source_sha256: str = ""
+    retrieved_utc: str = ""
+    licence: SourceLicence | None = None
+    label_rule: LabelRule | None = None
+    split_unit: str = "template_family"
+    split_unit_description: str = ""
+    split_sha256: str = ""
+    n_records: int = 0
+    label_counts: dict[str, int] = Field(default_factory=dict)
+    fault_counts: dict[str, int] = Field(default_factory=dict)
+    notes: tuple[str, ...] = ()

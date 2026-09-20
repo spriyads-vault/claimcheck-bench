@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>False success in tool-using agents — evaluation</title>
+<meta name="description"
+      content="An internal evaluation of false-success detection on real, labelled agent traces.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%230069A3'/></svg>">
+<link rel="stylesheet" href="/static/tokens.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<a class="skip-link" href="#report">Skip to the report</a>
+
+<div class="page">
+
+  <!-- Contents rail. Anchors into one reading order; it does not switch views,
+       because there is only one document here and it is meant to be read down. -->
+  <nav class="contents" id="contents" aria-label="Contents">
+    <p class="contents-title">Contents</p>
+    <ol>
+      <li><a href="#finding" data-section="finding"><span class="num">01</span> Finding</a></li>
+      <li><a href="#detection" data-section="detection"><span class="num">02</span> Detection quality</a></li>
+      <li><a href="#labels" data-section="labels"><span class="num">03</span> Label budget</a></li>
+      <li><a href="#faults" data-section="faults"><span class="num">04</span> By fault group</a></li>
+      <li><a href="#cost" data-section="cost"><span class="num">05</span> Cost and speed</a></li>
+      <li><a href="#method" data-section="method"><span class="num">06</span> Method and limits</a></li>
+    </ol>
+    <p class="contents-foot" id="contents-foot"></p>
+  </nav>
+
+  <div class="column">
+
+    <header class="masthead">
+      <p class="eyebrow">Internal evaluation · must not be published without written permission</p>
+      <h1>False success in tool-using agents</h1>
+      <p class="standfirst">
+        Can a detector tell when an agent says it did something it did not do? This is a
+        record of one comparison on real, labelled traces: a typed commercial detector, a
+        general LLM judge asked the same questions, and two classifiers trained on labels.
+      </p>
+      <div class="byline" id="byline"></div>
+
+      <div class="controls">
+        <label class="field">
+          <span>Dataset</span>
+          <select id="dataset-select" aria-label="Dataset"></select>
+        </label>
+        <label class="field">
+          <span>Run</span>
+          <select id="run-select" aria-label="Run"></select>
+        </label>
+        <button class="ghost" id="theme-toggle" aria-pressed="false">Dark</button>
+        <button class="ghost" id="export-btn">Export figure</button>
+        <span class="status" id="status" role="status"></span>
+      </div>
+    </header>
+
+    <div class="notice" id="notice" role="alert" hidden></div>
+
+    <main id="report">
+
+      <!-- 01 ------------------------------------------------------------- -->
+      <section class="section" id="finding">
+        <p class="section-number">01</p>
+        <h2 class="section-title">The finding</h2>
+        <p class="lede" id="finding-sentence">Loading.</p>
+        <p class="lede-sub" id="finding-sub"></p>
+        <ul class="claims" id="finding-claims"></ul>
+        <p class="note" id="finding-note"></p>
+      </section>
+
+      <!-- 02 ------------------------------------------------------------- -->
+      <section class="section" id="detection">
+        <p class="section-number">02</p>
+        <h2 class="section-title">Detection quality</h2>
+        <div class="prose" id="detection-prose"></div>
+        <figure class="figure" id="figure-headline"></figure>
+      </section>
+
+      <!-- 03 ------------------------------------------------------------- -->
+      <section class="section" id="labels">
+        <p class="section-number">03</p>
+        <h2 class="section-title">How many labels the classifier needs</h2>
+        <div class="prose" id="labels-prose"></div>
+        <figure class="figure" id="figure-curve"></figure>
+        <div class="aside" id="crossover-aside"></div>
+      </section>
+
+      <!-- 04 ------------------------------------------------------------- -->
+      <section class="section" id="faults">
+        <p class="section-number">04</p>
+        <h2 class="section-title">Where each detector works</h2>
+        <div class="prose" id="faults-prose"></div>
+        <figure class="figure" id="figure-faults"></figure>
+      </section>
+
+      <!-- 05 ------------------------------------------------------------- -->
+      <section class="section" id="cost">
+        <p class="section-number">05</p>
+        <h2 class="section-title">Cost and speed</h2>
+        <div class="prose" id="cost-prose"></div>
+        <figure class="figure" id="figure-cost"></figure>
+        <figure class="figure" id="figure-latency"></figure>
+      </section>
+
+      <!-- 06 ------------------------------------------------------------- -->
+      <section class="section" id="method">
+        <p class="section-number">06</p>
+        <h2 class="section-title">Method and limits</h2>
+        <p class="method-lede">
+          This section is the same length as the results on purpose. An evaluation is only
+          worth what its method and its limits are worth, and both belong where they are
+          read, not in a footnote.
+        </p>
+        <div class="method" id="method-body"></div>
+      </section>
+
+    </main>
+
+    <footer class="colophon">
+      <!-- Written into the document, not injected. The restriction has to hold
+           even if the script never runs, and an export or a print of this page
+           has to carry it too. -->
+      <p id="mca-footer">Internal only. Performance figures are covered by TypeSafe's MCA
+        and must not be published without written permission.</p>
+      <p class="colophon-meta" id="colophon-meta"></p>
+    </footer>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip" role="tooltip" aria-hidden="true"></div>
+<div aria-live="polite" class="visually-hidden" id="live-region"></div>
+
+<script src="/static/charts.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

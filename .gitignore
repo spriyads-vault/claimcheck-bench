@@ -11,10 +11,22 @@ build/
 
 # Generated artifacts — never committed
 data/dataset*.jsonl
+data/provenance-*.json
+
+# Ingested real corpora — never committed and never redistributed.
+# AppWorld releases its experiment outputs under Apache 2.0 with the added
+# condition that public redistribution of the protected bundle or its
+# derivatives must be encrypted. Keeping the ingested corpus out of the repo is
+# how that condition is met: nothing derived from it leaves this machine.
+data/appworld/
+.cache/
 data/splits*.json
 data/hashes*.json
 data/audit*.csv
 runs/*
 !runs/.gitkeep
+!runs/_archive/
+runs/_archive/*
+!runs/_archive/README.md
 reports/*
 !reports/.gitkeep

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from itertools import pairwise
+from pathlib import Path
 
 import pytest
 
@@ -81,3 +83,96 @@ def test_manifest_is_valid_json_with_every_entry_shaped_the_same():
         )
         if entry["verified"]:
             assert entry["input_usd_per_mtok"] is not None, name
+
+
+# ---------------------------------------------------------------------------
+# dated manifests supersede, they do not get edited
+# ---------------------------------------------------------------------------
+#
+# A price manifest is dated because runs record its SHA-256 and `verify-run`
+# recomputes every cost against it. Editing one in place invalidates every run
+# already recorded against it -- which is exactly what happened when the two
+# zero-cost gradient-boosted evaluators were appended to the 2026-09-19 file:
+# all eight synthetic runs stopped verifying. The fix was a new dated file, and
+# these pin the discipline so the shortcut cannot be taken again quietly.
+
+ACTIVE_MANIFEST = "config/prices-2026-09-20-2.json"
+
+#: The full supersede chain, oldest first. Every link is walked rather than
+#: only the newest hop, because "no rate changed" has to hold end to end: a
+#: price that moved two manifests ago and moved back is still a repricing that
+#: invalidates comparisons between runs on either side of it.
+MANIFEST_CHAIN = (
+    "config/prices-2026-09-19.json",
+    "config/prices-2026-09-20.json",
+    "config/prices-2026-09-20-2.json",
+)
+
+
+def _models(path: str) -> dict:
+    return json.loads(Path(path).read_text(encoding="utf-8"))["models"]
+
+
+def test_the_manifest_eval_yaml_points_at_is_the_one_under_test():
+    import yaml
+
+    raw = yaml.safe_load(Path("config/eval.yaml").read_text(encoding="utf-8"))
+    assert raw["prices"] == ACTIVE_MANIFEST, (
+        "the active manifest changed; point ACTIVE_MANIFEST at it and re-run the "
+        "runs recorded against the previous one"
+    )
+
+
+def test_the_active_manifest_declares_its_own_date_and_what_it_supersedes():
+    prices = load_prices(ACTIVE_MANIFEST)
+    assert prices.manifest_date == "2026-09-20"
+    raw = json.loads(Path(ACTIVE_MANIFEST).read_text(encoding="utf-8"))
+    assert raw["supersedes"] == MANIFEST_CHAIN[-2]
+
+
+def test_two_same_day_manifests_are_told_apart_by_revision_not_by_editing():
+    """A second manifest on one date needs a distinguishing mark of its own.
+
+    Adding the OpenAI arm on the same day as the previous manifest could not be
+    an in-place edit -- eight runs record that file's SHA-256 -- and it could not
+    reuse the filename either. A `revision` makes the ordering explicit rather
+    than leaving it to be inferred from a filename suffix.
+    """
+    previous = json.loads(Path(MANIFEST_CHAIN[-2]).read_text(encoding="utf-8"))
+    active = json.loads(Path(ACTIVE_MANIFEST).read_text(encoding="utf-8"))
+    assert previous["manifest_date"] == active["manifest_date"]
+    assert active.get("revision", 1) > previous.get("revision", 1)
+
+
+def test_the_chain_is_linked_and_every_link_is_still_loadable():
+    """Runs recorded against any manifest must keep verifying, so all stay readable."""
+    for older, newer in pairwise(MANIFEST_CHAIN):
+        assert load_prices(older).currency == "USD"
+        linked = json.loads(Path(newer).read_text(encoding="utf-8"))["supersedes"]
+        assert linked == older, f"{newer} says it supersedes {linked}, not {older}"
+
+
+def test_superseding_may_add_a_model_but_never_reprices_one_silently():
+    """The invariant that made the in-place edit survivable, now enforced."""
+    for older, newer in pairwise(MANIFEST_CHAIN):
+        old = _models(older)
+        new = _models(newer)
+        assert set(old) <= set(new), (
+            f"{newer} drops a model {older} carried; a run may still reference it"
+        )
+        repriced = {
+            name: (old[name], new[name])
+            for name in old
+            if (old[name]["input_usd_per_mtok"], old[name]["output_usd_per_mtok"])
+            != (new[name]["input_usd_per_mtok"], new[name]["output_usd_per_mtok"])
+        }
+        assert not repriced, (
+            f"these models were repriced between {older} and {newer}: {sorted(repriced)}. "
+            "That is allowed, but it invalidates cost comparisons between runs on either "
+            "side of it, so it has to be a deliberate, recorded decision -- not a test fix."
+        )
+
+
+def test_the_superseded_manifest_is_still_loadable():
+    """Runs recorded against it must keep verifying, so it stays readable."""
+    assert load_prices(MANIFEST).manifest_date == "2026-09-19"

@@ -1,0 +1,92 @@
+/* Design tokens. One file, machine-checkable.
+ *
+ * Kept apart from app.css because tests/test_dashboard_design.py parses this
+ * file and recomputes every claim in it: WCAG contrast for text and for
+ * graphical marks, and pairwise separation of the series colours under
+ * simulated protanopia, deuteranopia and tritanopia. A colour is not in this
+ * file unless that test passes on it, and the test fails the build if someone
+ * later edits a value by eye.
+ *
+ * Hues come from the Okabe-Ito colourblind-safe set, then re-stepped in
+ * lightness per theme. Dark is not an inversion of light: each theme picks its
+ * own step off the same hue so both sit at a comfortable contrast against
+ * their own background.
+ *
+ * Colour carries ROLE, not rank:
+ *   --series-trained      a classifier fit on labels (the two TF-IDF arms,
+ *                         two steps of one blue because they are one role)
+ *   --series-typed        the typed zero-shot detector (Jev)
+ *   --series-general      the general zero-shot LLM judge
+ *   --series-heuristic    hand-written rules; neutral, because it is not a model
+ *   --semantic-for / --semantic-against
+ *                         RESERVED. Verdict chips and signed deltas only, never
+ *                         a series. Nothing on this page is coloured by who won.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* -- surfaces and ink ------------------------------------------------ */
+  --bg: #ffffff;
+  --surface: #fafaf9;
+  --surface-sunken: #f4f4f2;
+  --text: #17171a;          /* 17.89:1 on --bg */
+  --muted: #5b5b66;         /*  6.70:1 on --bg */
+  --line: #e3e3e0;
+  --line-strong: #cfcfcb;
+  --focus: #0069a3;
+  --on-accent: #ffffff;     /*  5.92:1 on --series-trained */
+
+  /* -- series, by role ------------------------------------------------- */
+  --series-trained: #0069a3;      /* 5.92:1 on --bg */
+  --series-trained-alt: #0083cc;  /* 4.10:1 on --bg */
+  --series-typed: #6f2a50;        /* 9.89:1 on --bg */
+  --series-general: #b87f00;      /* 3.46:1 on --bg */
+  --series-heuristic: #8f8f99;    /* 3.20:1 on --bg */
+
+  /* -- reserved semantic pair ------------------------------------------ */
+  --semantic-for: #008f68;        /* 4.09:1 on --bg */
+  --semantic-against: #b85100;    /* 4.98:1 on --bg */
+
+  /* -- band fills. Decorative; the line and the markers carry the data. - */
+  --band-alpha: 0.16;
+  --grid: #ededea;
+
+  /* -- type ------------------------------------------------------------ */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* -- measure and rhythm ---------------------------------------------- */
+  --measure: 68ch;
+  --gutter: 24px;
+  --rule: 1px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0e0e11;
+  --surface: #16161a;
+  --surface-sunken: #1c1c21;
+  --text: #ececef;          /* 16.35:1 on --bg */
+  --muted: #9c9ca8;         /*  7.10:1 on --bg */
+  --line: #2a2a31;
+  --line-strong: #3a3a43;
+  --focus: #3db9ff;
+  --on-accent: #0e0e11;     /*  8.79:1 on --series-trained */
+
+  --series-trained: #3db9ff;      /*  8.79:1 on --bg */
+  --series-trained-alt: #0083cc;  /*  4.70:1 on --bg */
+  --series-typed: #e0aeca;        /* 10.17:1 on --bg */
+  --series-general: #ffbd29;      /* 11.53:1 on --bg */
+  --series-heuristic: #6b6b75;    /*  3.66:1 on --bg */
+
+  --semantic-for: #34c79c;        /*  8.99:1 on --bg */
+  --semantic-against: #e8763a;    /*  6.50:1 on --bg */
+
+  --band-alpha: 0.22;
+  --grid: #222228;
+}

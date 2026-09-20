@@ -13,6 +13,20 @@ Three layers, applied in this order:
 A 64-character lowercase hex string is exempt from layer 3 because this
 repository writes SHA-256 digests into the same artifacts, and redacting those
 would destroy the audit trail. Layer 2 still applies to it.
+
+**Structural identifiers are exempt from layers 1 and 3 too.** A ``trace_id`` is
+a join key, not a value: if it is rewritten, the prediction can no longer be
+matched to the record it was made about, and the trace silently vanishes from
+every metric. That is exactly what happened when real trace ids arrived --
+``deepseek-coder-33b-instruct_together`` is 36 characters of ``[A-Za-z0-9_-]``
+and layer 3's long-opaque-token rule swallowed it whole, dropping 117 of 702
+traces out of the scored set without a word. Silent data loss is a worse
+failure than a conservative redaction, so these keys get layer 2 -- the exact
+live-secret scrub -- and nothing heuristic.
+
+The safety net is unchanged: :func:`contains_secret` runs over the whole row
+before it is written and refuses the run if a live secret survives *anywhere*,
+exempt keys included.
 """
 
 from __future__ import annotations
@@ -38,6 +52,27 @@ SENSITIVE_KEY_NAMES = frozenset(
         "password",
         "token",
         "bearer",
+    }
+)
+
+#: Keys whose values are structural identifiers this harness generates itself.
+#: They must round-trip byte-exact or the artifact stops joining to the dataset.
+#: Layer 2 still scrubs a live secret out of them; only the heuristics are off.
+STRUCTURAL_KEY_NAMES = frozenset(
+    {
+        "trace_id",
+        "run_id",
+        "model_id",
+        "provider",
+        "split",
+        "template_family",
+        "domain",
+        "dataset_path",
+        "predictions_path",
+        "attempts_path",
+        "truncation_path",
+        "prices_path",
+        "git_commit",
     }
 )
 
@@ -76,20 +111,25 @@ def redact_text(text: str) -> str:
     )
 
 
-def redact(obj: Any) -> Any:
-    """Recursively redact secrets from any JSON-shaped object."""
+def redact(obj: Any, _structural: bool = False) -> Any:
+    """Recursively redact secrets from any JSON-shaped object.
+
+    ``_structural`` is set for the value of a key in
+    :data:`STRUCTURAL_KEY_NAMES`, where only the exact live-secret scrub runs.
+    """
     if isinstance(obj, str):
-        return redact_text(obj)
+        return _scrub_env_values(obj) if _structural else redact_text(obj)
     if isinstance(obj, dict):
         out: dict[str, Any] = {}
         for key, value in obj.items():
-            if isinstance(key, str) and key.strip().lower() in SENSITIVE_KEY_NAMES:
+            name = key.strip().lower() if isinstance(key, str) else ""
+            if name in SENSITIVE_KEY_NAMES:
                 out[key] = REDACTED
             else:
-                out[key] = redact(value)
+                out[key] = redact(value, _structural or name in STRUCTURAL_KEY_NAMES)
         return out
     if isinstance(obj, (list, tuple)):
-        return [redact(item) for item in obj]
+        return [redact(item, _structural) for item in obj]
     return obj
 
 

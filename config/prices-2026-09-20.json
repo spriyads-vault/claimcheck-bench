@@ -1,0 +1,50 @@
+{
+  "manifest_date": "2026-09-20",
+  "currency": "USD",
+  "note": "All pricing used anywhere in this repository is read from this file. No price is hard-coded in code. A model with verified=false has no usable rate and its cost is recorded as null, never guessed. Supersedes the 2026-09-19 manifest, which is kept unchanged so runs recorded against it still verify. The only difference is the two local gradient-boosted evaluators, both zero-cost; no metered rate changed.",
+  "models": {
+    "jev-1.13.0": {
+      "input_usd_per_mtok": 0.042,
+      "output_usd_per_mtok": 0.0,
+      "verified": true,
+      "source": "https://docs.typesafe.ai/models -- 'Price (per Btok / per Mtok): $42 / $0.042'; 'Charged per input token. Output tokens are free.' Fetched 2026-09-20."
+    },
+    "jev-latest": {
+      "input_usd_per_mtok": 0.042,
+      "output_usd_per_mtok": 0.0,
+      "verified": true,
+      "source": "https://docs.typesafe.ai/models -- alias resolving to jev-1.13.0. Fetched 2026-09-20."
+    },
+    "rules": {
+      "input_usd_per_mtok": 0.0,
+      "output_usd_per_mtok": 0.0,
+      "verified": true,
+      "source": "Local deterministic evaluator. No metered cost."
+    },
+    "UNVERIFIED_GENERAL_MODEL": {
+      "input_usd_per_mtok": null,
+      "output_usd_per_mtok": null,
+      "verified": false,
+      "source": "Placeholder. No general-model price was verified at build time. Any run against a general model records cost_usd = null until a rate is added here with a citation."
+    },
+    "tfidf-logreg-v1": {
+      "input_usd_per_mtok": 0.0,
+      "output_usd_per_mtok": 0.0,
+      "verified": true,
+      "source": "Local scikit-learn evaluator. No metered cost."
+    },
+    "tfidf-gbm-xgboost-v1": {
+      "input_usd_per_mtok": 0.0,
+      "output_usd_per_mtok": 0.0,
+      "verified": true,
+      "source": "Local gradient-boosted evaluator. No metered cost."
+    },
+    "tfidf-gbm-sklearn-hgb-v1": {
+      "input_usd_per_mtok": 0.0,
+      "output_usd_per_mtok": 0.0,
+      "verified": true,
+      "source": "Local gradient-boosted evaluator. No metered cost."
+    }
+  },
+  "supersedes": "config/prices-2026-09-19.json"
+}
