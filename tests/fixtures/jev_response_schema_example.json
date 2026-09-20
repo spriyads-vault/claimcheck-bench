@@ -1,0 +1,21 @@
+{
+  "_provenance": "CONSTRUCTED FROM THE DOCUMENTED SCHEMA. This is not a captured response from api.typesafe.ai. It exists only to exercise the parser against the shape published at https://docs.typesafe.ai/api (fetched 2026-09-20): a Choice answer carries type/choice/probabilities/confidence, a Noul answer carries type/noul and NO confidence, and usage carries input_tokens/output_tokens. No number here is a real measurement.",
+  "model": "jev-1.13.0",
+  "answers": {
+    "verdict": {
+      "type": "choice",
+      "choice": "unsupported_success",
+      "probabilities": {
+        "supported_success": 0.05,
+        "unsupported_success": 0.82,
+        "reported_failure_or_uncertainty": 0.09,
+        "no_success_claim": 0.04
+      },
+      "confidence": 0.77
+    },
+    "has_success_claim": {"type": "noul", "noul": 0.94},
+    "tool_evidence_supports_claim": {"type": "noul", "noul": 0.08},
+    "needs_review": {"type": "noul", "noul": 0.88}
+  },
+  "usage": {"input_tokens": 512, "output_tokens": 24}
+}
