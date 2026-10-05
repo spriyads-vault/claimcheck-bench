@@ -6,12 +6,6 @@ succeeded when the ordered tool evidence does not support that claim — measure
 a deterministic rule checker, a TF-IDF classifier, a TF-IDF + gradient-boosted
 classifier, and a general OpenAI judge asked the same questions on the same evidence.
 
-> ⚠️ **Publication restriction.** Benchmark and performance figures produced here are
-> covered by TypeSafe's Master Customer Agreement and by OpenAI's terms, both of which
-> restrict publishing results about their models. This repository is **private** and
-> must stay private unless written permission is obtained. Every report carries the same
-> notice in its header.
-
 ---
 
 ## Headline result
